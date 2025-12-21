@@ -424,7 +424,7 @@ const SearchDialog = ({ searchInfo, onClose }: Props) => {
       console.log("API 호출에 걸린 시간(ms): ", end - start);
       setLectures(results.flatMap((result) => result.data));
     });
-  }, []);
+  }, [searchInfo]);
 
   // [수정] DOM 요소(loader, loaderWrapper)가 생성되면 실행됨
   useEffect(() => {
