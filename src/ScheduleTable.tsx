@@ -22,8 +22,8 @@ import { ComponentProps, Fragment } from "react";
 interface Props {
   tableId: string;
   schedules: Schedule[];
-  onScheduleTimeClick?: (timeInfo: { day: string, time: number }) => void;
-  onDeleteButtonClick?: (timeInfo: { day: string, time: number }) => void;
+  onScheduleTimeClick?: (timeInfo: { day: string; time: number }) => void;
+  onDeleteButtonClick?: (timeInfo: { day: string; time: number }) => void;
 }
 
 const TIMES = [
@@ -38,10 +38,15 @@ const TIMES = [
     .map((v) => `${parseHnM(v)}~${parseHnM(v + 50 * 분)}`),
 ] as const;
 
-const ScheduleTable = ({ tableId, schedules, onScheduleTimeClick, onDeleteButtonClick }: Props) => {
-
+const ScheduleTable = ({
+  tableId,
+  schedules,
+  onScheduleTimeClick,
+  onDeleteButtonClick,
+}: Props) => {
   const getColor = (lectureId: string): string => {
-    const lectures = [...new Set(schedules.map(({ lecture }) => lecture.id))];
+    // [수정 1] lecture가 undefined일 수 있으므로 옵셔널 체이닝(?.) 사용
+    const lectures = [...new Set(schedules.map(({ lecture }) => lecture?.id))];
     const colors = ["#fdd", "#ffd", "#dff", "#ddf", "#fdf", "#dfd"];
     return colors[lectures.indexOf(lectureId) % colors.length];
   };
@@ -54,7 +59,7 @@ const ScheduleTable = ({ tableId, schedules, onScheduleTimeClick, onDeleteButton
       return String(activeId).split(":")[0];
     }
     return null;
-  }
+  };
 
   const activeTableId = getActiveTableId();
 
@@ -79,7 +84,12 @@ const ScheduleTable = ({ tableId, schedules, onScheduleTimeClick, onDeleteButton
           </Flex>
         </GridItem>
         {DAY_LABELS.map((day) => (
-          <GridItem key={day} borderLeft="1px" borderColor="gray.300" bg="gray.100">
+          <GridItem
+            key={day}
+            borderLeft="1px"
+            borderColor="gray.300"
+            bg="gray.100"
+          >
             <Flex justifyContent="center" alignItems="center" h="full">
               <Text fontWeight="bold">{day}</Text>
             </Flex>
@@ -90,10 +100,12 @@ const ScheduleTable = ({ tableId, schedules, onScheduleTimeClick, onDeleteButton
             <GridItem
               borderTop="1px solid"
               borderColor="gray.300"
-              bg={timeIndex > 17 ? 'gray.200' : 'gray.100'}
+              bg={timeIndex > 17 ? "gray.200" : "gray.100"}
             >
               <Flex justifyContent="center" alignItems="center" h="full">
-                <Text fontSize="xs">{fill2(timeIndex + 1)} ({time})</Text>
+                <Text fontSize="xs">
+                  {fill2(timeIndex + 1)} ({time})
+                </Text>
               </Flex>
             </GridItem>
             {DAY_LABELS.map((day) => (
@@ -101,43 +113,52 @@ const ScheduleTable = ({ tableId, schedules, onScheduleTimeClick, onDeleteButton
                 key={`${day}-${timeIndex + 2}`}
                 borderWidth="1px 0 0 1px"
                 borderColor="gray.300"
-                bg={timeIndex > 17 ? 'gray.100' : 'white'}
+                bg={timeIndex > 17 ? "gray.100" : "white"}
                 cursor="pointer"
-                _hover={{ bg: 'yellow.100' }}
-                onClick={() => onScheduleTimeClick?.({ day, time: timeIndex + 1 })}
+                _hover={{ bg: "yellow.100" }}
+                onClick={() =>
+                  onScheduleTimeClick?.({ day, time: timeIndex + 1 })
+                }
               />
             ))}
           </Fragment>
         ))}
       </Grid>
 
-      {schedules.map((schedule, index) => (
-        <DraggableSchedule
-          key={`${schedule.lecture.title}-${index}`}
-          id={`${tableId}:${index}`}
-          data={schedule}
-          bg={getColor(schedule.lecture.id)}
-          onDeleteButtonClick={() => onDeleteButtonClick?.({
-            day: schedule.day,
-            time: schedule.range[0],
-          })}
-        />
-      ))}
+      {schedules.map((schedule, index) => {
+        // [수정 2] lecture가 없는 경우 렌더링하지 않도록 방어 코드 추가 (Guard Clause)
+        if (!schedule.lecture) return null;
+
+        return (
+          <DraggableSchedule
+            key={`${schedule.lecture.title}-${index}`}
+            id={`${tableId}:${index}`}
+            data={schedule}
+            bg={getColor(schedule.lecture.id)}
+            onDeleteButtonClick={() =>
+              onDeleteButtonClick?.({
+                day: schedule.day,
+                time: schedule.range[0],
+              })
+            }
+          />
+        );
+      })}
     </Box>
   );
 };
 
 const DraggableSchedule = ({
- id,
- data,
- bg,
- onDeleteButtonClick
+  id,
+  data,
+  bg,
+  onDeleteButtonClick,
 }: { id: string; data: Schedule } & ComponentProps<typeof Box> & {
-  onDeleteButtonClick: () => void
-}) => {
+    onDeleteButtonClick: () => void;
+  }) => {
   const { day, range, room, lecture } = data;
   const { attributes, setNodeRef, listeners, transform } = useDraggable({ id });
-  const leftIndex = DAY_LABELS.indexOf(day as typeof DAY_LABELS[number]);
+  const leftIndex = DAY_LABELS.indexOf(day as (typeof DAY_LABELS)[number]);
   const topIndex = range[0] - 1;
   const size = range.length;
 
@@ -146,10 +167,10 @@ const DraggableSchedule = ({
       <PopoverTrigger>
         <Box
           position="absolute"
-          left={`${120 + (CellSize.WIDTH * leftIndex) + 1}px`}
+          left={`${120 + CellSize.WIDTH * leftIndex + 1}px`}
           top={`${40 + (topIndex * CellSize.HEIGHT + 1)}px`}
-          width={(CellSize.WIDTH - 1) + "px"}
-          height={(CellSize.HEIGHT * size - 1) + "px"}
+          width={CellSize.WIDTH - 1 + "px"}
+          height={CellSize.HEIGHT * size - 1 + "px"}
           bg={bg}
           p={1}
           boxSizing="border-box"
@@ -159,13 +180,16 @@ const DraggableSchedule = ({
           {...listeners}
           {...attributes}
         >
-          <Text fontSize="sm" fontWeight="bold">{lecture.title}</Text>
+          {/* [수정 3] lecture?.title로 안전하게 접근 */}
+          <Text fontSize="sm" fontWeight="bold">
+            {lecture?.title}
+          </Text>
           <Text fontSize="xs">{room}</Text>
         </Box>
       </PopoverTrigger>
-      <PopoverContent onClick={event => event.stopPropagation()}>
-        <PopoverArrow/>
-        <PopoverCloseButton/>
+      <PopoverContent onClick={(event) => event.stopPropagation()}>
+        <PopoverArrow />
+        <PopoverCloseButton />
         <PopoverBody>
           <Text>강의를 삭제하시겠습니까?</Text>
           <Button colorScheme="red" size="xs" onClick={onDeleteButtonClick}>
@@ -175,6 +199,6 @@ const DraggableSchedule = ({
       </PopoverContent>
     </Popover>
   );
-}
+};
 
 export default ScheduleTable;

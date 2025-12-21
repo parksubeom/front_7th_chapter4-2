@@ -23,7 +23,9 @@ export interface Schedule {
   room?: string;
 }
 
-//  성능 최적화를 위해 문자열 schedule을 미리 파싱한 정보를 담고 있는 확장 타입
+// 검색 최적화 필드(titleLower, idLower) 추가
 export interface LectureWithSchedule extends Lecture {
   schedules: ParsedSchedule[];
+  titleLower: string; // 검색용: 소문자 제목
+  idLower: string; // 검색용: 소문자 ID
 }

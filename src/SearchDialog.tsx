@@ -440,11 +440,14 @@ const SearchDialog = ({ searchInfo, onClose }: Props) => {
       times,
       majors,
     } = deferredSearchOptions;
+    const queryLower = query.toLowerCase();
+
     return lectures
       .filter(
         (lecture) =>
-          lecture.title.toLowerCase().includes(query.toLowerCase()) ||
-          lecture.id.toLowerCase().includes(query.toLowerCase())
+          // 👇 매번 toLowerCase() 호출하던 것을 제거하고, 미리 만든 필드 사용
+          lecture.titleLower.includes(queryLower) ||
+          lecture.idLower.includes(queryLower)
       )
       .filter(
         (lecture) => grades.length === 0 || grades.includes(lecture.grade)
@@ -530,6 +533,9 @@ const SearchDialog = ({ searchInfo, onClose }: Props) => {
           result.data.map((lecture) => ({
             ...lecture,
             schedules: lecture.schedule ? parseSchedule(lecture.schedule) : [],
+            // 검색용 문자열 미리 변환 (Pre-lowercasing)
+            titleLower: lecture.title.toLowerCase(),
+            idLower: lecture.id.toLowerCase(),
           }))
         )
       );
