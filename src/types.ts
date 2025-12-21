@@ -29,3 +29,8 @@ export interface LectureWithSchedule extends Lecture {
   titleLower: string; // 검색용: 소문자 제목
   idLower: string; // 검색용: 소문자 ID
 }
+
+export interface LectureRowProps {
+  lectures: LectureWithSchedule[];
+  addSchedule: (lecture: Lecture) => void;
+}

@@ -157,7 +157,7 @@ jobs:
             |:---:|:---:|:---|
             | **Performance** | **${formatScore(scores.performance)}** | ${getStatusIcon(formatScore(scores.performance))} |
             | **Accessibility** | **${formatScore(scores.accessibility)}** | ${getStatusIcon(formatScore(scores.accessibility))} |
-
+            | **Best Practices** | **${formatScore(scores.bestPractices)}** | ${getStatusIcon(formatScore(scores.bestPractices))} |
             ### Core Web Vitals
             | 지표 | 측정값 | 상태 |
             |:---:|:---:|:---|

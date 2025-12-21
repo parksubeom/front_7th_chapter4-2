@@ -5,8 +5,8 @@ import {
   useCallback,
   memo,
   useDeferredValue,
+  useRef,
 } from "react";
-
 import {
   Box,
   Button,
@@ -24,54 +24,50 @@ import {
   ModalOverlay,
   Select,
   Stack,
-  Table,
   Tag,
   TagCloseButton,
   TagLabel,
-  Tbody,
-  Td,
   Text,
-  Th,
-  Thead,
-  Tr,
   VStack,
   Wrap,
+  // [복귀] 기존 Table 컴포넌트들을 그대로 사용합니다.
+  Table,
+  Thead,
+  Tbody,
+  Tr,
+  Th,
+  Td,
 } from "@chakra-ui/react";
-
 import { useScheduleContext } from "./ScheduleContext.tsx";
-
-import { Lecture, LectureWithSchedule } from "./types.ts";
-
+import { Lecture } from "./types.ts";
 import { parseSchedule } from "./utils.ts";
-
 import axios from "axios";
-
 import { DAY_LABELS } from "./constants.ts";
+// [신규] DOM 구조를 강제하지 않는 Headless 가상화 라이브러리
+import { useVirtualizer } from "@tanstack/react-virtual";
 
 interface Props {
   searchInfo: {
     tableId: string;
-
     day?: string;
-
     time?: number;
   } | null;
-
   onClose: () => void;
 }
 
 interface SearchOption {
   query?: string;
-
   grades: number[];
-
   days: string[];
-
   times: number[];
-
   majors: string[];
-
   credits?: number;
+}
+
+interface LectureWithSchedule extends Lecture {
+  schedules: ReturnType<typeof parseSchedule>;
+  titleLower: string;
+  idLower: string;
 }
 
 const TIME_SLOTS = [
@@ -101,8 +97,6 @@ const TIME_SLOTS = [
   { id: 24, label: "22:35~23:25" },
 ];
 
-const PAGE_SIZE = 100;
-
 const fetchMajors = () => axios.get<Lecture[]>("/schedules-majors.json");
 const fetchLiberalArts = () =>
   axios.get<Lecture[]>("/schedules-liberal-arts.json");
@@ -123,8 +117,7 @@ const fetchAllLectures = async () => {
   return results;
 };
 
-// --- 하위 컴포넌트들 (변경 없음) ---
-
+// --- 하위 컴포넌트들 (기존 유지) ---
 const GradeCheckboxGroup = memo(
   ({
     grades,
@@ -283,44 +276,29 @@ const SearchFilter = memo(
     ) => void;
   }) => {
     const handleChangeQuery = useCallback(
-      (e: React.ChangeEvent<HTMLInputElement>) => {
-        changeSearchOption("query", e.target.value);
-      },
+      (e: React.ChangeEvent<HTMLInputElement>) =>
+        changeSearchOption("query", e.target.value),
       [changeSearchOption]
     );
-
     const handleChangeCredits = useCallback(
-      (e: React.ChangeEvent<HTMLSelectElement>) => {
-        changeSearchOption("credits", e.target.value);
-      },
+      (e: React.ChangeEvent<HTMLSelectElement>) =>
+        changeSearchOption("credits", e.target.value),
       [changeSearchOption]
     );
-
     const handleChangeGrades = useCallback(
-      (v: number[]) => {
-        changeSearchOption("grades", v);
-      },
+      (v: number[]) => changeSearchOption("grades", v),
       [changeSearchOption]
     );
-
     const handleChangeDays = useCallback(
-      (v: string[]) => {
-        changeSearchOption("days", v);
-      },
+      (v: string[]) => changeSearchOption("days", v),
       [changeSearchOption]
     );
-
     const handleChangeTimes = useCallback(
-      (v: number[]) => {
-        changeSearchOption("times", v);
-      },
+      (v: number[]) => changeSearchOption("times", v),
       [changeSearchOption]
     );
-
     const handleChangeMajors = useCallback(
-      (v: string[]) => {
-        changeSearchOption("majors", v);
-      },
+      (v: string[]) => changeSearchOption("majors", v),
       [changeSearchOption]
     );
 
@@ -335,7 +313,6 @@ const SearchFilter = memo(
               onChange={handleChangeQuery}
             />
           </FormControl>
-
           <FormControl>
             <FormLabel>학점</FormLabel>
             <Select
@@ -349,7 +326,6 @@ const SearchFilter = memo(
             </Select>
           </FormControl>
         </HStack>
-
         <HStack spacing={4}>
           <GradeCheckboxGroup
             grades={searchOptions.grades}
@@ -360,7 +336,6 @@ const SearchFilter = memo(
             onChange={handleChangeDays}
           />
         </HStack>
-
         <HStack spacing={4}>
           <TimeCheckboxGroup
             times={searchOptions.times}
@@ -377,50 +352,13 @@ const SearchFilter = memo(
   }
 );
 
-const LectureRow = memo(
-  ({
-    lecture,
-    addSchedule,
-  }: {
-    lecture: Lecture;
-    addSchedule: (lecture: Lecture) => void;
-  }) => {
-    return (
-      <Tr>
-        <Td width="100px">{lecture.id}</Td>
-        <Td width="50px">{lecture.grade}</Td>
-        <Td width="200px">{lecture.title}</Td>
-        <Td width="50px">{lecture.credits}</Td>
-        <Td width="150px" dangerouslySetInnerHTML={{ __html: lecture.major }} />
-        <Td
-          width="150px"
-          dangerouslySetInnerHTML={{ __html: lecture.schedule }}
-        />
-        <Td width="80px">
-          <Button
-            size="sm"
-            colorScheme="green"
-            onClick={() => addSchedule(lecture)}
-          >
-            추가
-          </Button>
-        </Td>
-      </Tr>
-    );
-  }
-);
-
 const SearchDialog = ({ searchInfo, onClose }: Props) => {
   const { setSchedulesMap } = useScheduleContext();
 
-  const [loaderWrapper, setLoaderWrapper] = useState<HTMLDivElement | null>(
-    null
-  );
-  const [loader, setLoader] = useState<HTMLDivElement | null>(null);
+  // [가상화] 부모 스크롤 컨테이너 참조 (Box)
+  const parentRef = useRef<HTMLDivElement>(null);
 
-  // [수정] state 타입을 LectureWithSchedule[]로 변경
   const [lectures, setLectures] = useState<LectureWithSchedule[]>([]);
-  const [page, setPage] = useState(1);
   const [searchOptions, setSearchOptions] = useState<SearchOption>({
     query: "",
     grades: [],
@@ -445,7 +383,6 @@ const SearchDialog = ({ searchInfo, onClose }: Props) => {
     return lectures
       .filter(
         (lecture) =>
-          // 👇 매번 toLowerCase() 호출하던 것을 제거하고, 미리 만든 필드 사용
           lecture.titleLower.includes(queryLower) ||
           lecture.idLower.includes(queryLower)
       )
@@ -458,66 +395,64 @@ const SearchDialog = ({ searchInfo, onClose }: Props) => {
       .filter(
         (lecture) => !credits || lecture.credits.startsWith(String(credits))
       )
-      .filter((lecture) => {
-        if (days.length === 0) {
-          return true;
-        }
-        // [최적화] 매번 파싱하지 않고, 미리 파싱된 schedules 사용
-        return lecture.schedules.some((s) => days.includes(s.day));
-      })
-      .filter((lecture) => {
-        if (times.length === 0) {
-          return true;
-        }
-        // [최적화] 매번 파싱하지 않고, 미리 파싱된 schedules 사용
-        return lecture.schedules.some((s) =>
-          s.range.some((time) => times.includes(time))
-        );
-      });
+      .filter(
+        (lecture) =>
+          days.length === 0 ||
+          lecture.schedules.some((s) => days.includes(s.day))
+      )
+      .filter(
+        (lecture) =>
+          times.length === 0 ||
+          lecture.schedules.some((s) =>
+            s.range.some((time) => times.includes(time))
+          )
+      );
   }, [deferredSearchOptions, lectures]);
-
-  const lastPage = Math.ceil(filteredLectures.length / PAGE_SIZE);
-  const visibleLectures = filteredLectures.slice(0, page * PAGE_SIZE);
 
   const allMajors = useMemo(
     () => [...new Set(lectures.map((lecture) => lecture.major))],
     [lectures]
   );
 
+  // [핵심] TanStack Virtual 훅 사용
+  // 이 녀석이 "어떤 행을 그려야 할지" 계산만 해줍니다. Table 태그 사용 가능!
+  const rowVirtualizer = useVirtualizer({
+    count: filteredLectures.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => 65, // 대략적인 행 높이 (자동으로 조정됨)
+    overscan: 5, // 스크롤 부드러움을 위해 미리 렌더링할 개수
+  });
+
   const changeSearchOption = useCallback(
     (field: keyof SearchOption, value: SearchOption[typeof field]) => {
-      setPage(1);
       setSearchOptions((prev) => ({ ...prev, [field]: value }));
-      loaderWrapper?.scrollTo(0, 0);
+      // 검색 조건 변경 시 스크롤 초기화
+      if (parentRef.current) {
+        parentRef.current.scrollTop = 0;
+      }
     },
-    [loaderWrapper]
+    []
   );
 
   const addSchedule = useCallback(
     (lecture: Lecture) => {
       if (!searchInfo) return;
-
       const { tableId } = searchInfo;
-
       const schedules = parseSchedule(lecture.schedule).map((schedule) => ({
         ...schedule,
         lecture,
       }));
-
       setSchedulesMap((prev) => ({
         ...prev,
         [tableId]: [...prev[tableId], ...schedules],
       }));
-
       onClose();
     },
     [searchInfo, setSchedulesMap, onClose]
   );
 
   useEffect(() => {
-    if (!searchInfo || lectures.length > 0) {
-      return;
-    }
+    if (!searchInfo || lectures.length > 0) return;
 
     const start = performance.now();
     console.log("API 호출 시작: ", start);
@@ -526,14 +461,11 @@ const SearchDialog = ({ searchInfo, onClose }: Props) => {
       console.log("모든 API 호출 완료 ", end);
       console.log("API 호출에 걸린 시간(ms): ", end - start);
 
-      // [최적화] 데이터 수신 직후 파싱 수행 (O(N))
-      // 필터링 시에는 파싱된 데이터를 사용하여 연산 비용 제거
       setLectures(
         results.flatMap((result) =>
           result.data.map((lecture) => ({
             ...lecture,
             schedules: lecture.schedule ? parseSchedule(lecture.schedule) : [],
-            // 검색용 문자열 미리 변환 (Pre-lowercasing)
             titleLower: lecture.title.toLowerCase(),
             idLower: lecture.id.toLowerCase(),
           }))
@@ -543,41 +475,17 @@ const SearchDialog = ({ searchInfo, onClose }: Props) => {
   }, [searchInfo]);
 
   useEffect(() => {
-    if (!loader || !loaderWrapper) {
-      return;
-    }
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries[0].isIntersecting) {
-          setPage((prevPage) => Math.min(lastPage, prevPage + 1));
-        }
-      },
-      {
-        threshold: 0,
-        root: loaderWrapper,
-        rootMargin: "0px 0px 1000px 0px",
-      }
-    );
-
-    observer.observe(loader);
-
-    return () => observer.unobserve(loader);
-  }, [loader, loaderWrapper, lastPage]);
-
-  useEffect(() => {
     setSearchOptions((prev) => ({
       ...prev,
       days: searchInfo?.day ? [searchInfo.day] : [],
       times: searchInfo?.time ? [searchInfo.time] : [],
     }));
-    setPage(1);
   }, [searchInfo]);
 
   return (
     <Modal isOpen={Boolean(searchInfo)} onClose={onClose} size="6xl">
       <ModalOverlay />
-      <ModalContent maxW="90vw" w="1000px">
+      <ModalContent maxW="90vw" w="1000px" minH="80vh">
         <ModalHeader>수업 검색</ModalHeader>
         <ModalCloseButton />
         <ModalBody>
@@ -589,7 +497,9 @@ const SearchDialog = ({ searchInfo, onClose }: Props) => {
             />
 
             <Text align="right">검색결과: {filteredLectures.length}개</Text>
+
             <Box>
+              {/* [1] 헤더: 기존 Table 컴포넌트 유지 */}
               <Table>
                 <Thead>
                   <Tr>
@@ -604,19 +514,141 @@ const SearchDialog = ({ searchInfo, onClose }: Props) => {
                 </Thead>
               </Table>
 
-              <Box overflowY="auto" maxH="500px" ref={setLoaderWrapper}>
+              {/* [2] 바디: 원하는 구조(Table > Tbody) 유지 + 가상화 적용 */}
+              {/* [2] 바디: 원하는 구조(Table > Tbody) 유지 + 가상화 적용 */}
+              {/* [2] 바디: 원하는 구조(Table > Tbody) 유지 + 가상화 적용 */}
+              <Box overflowY="auto" maxH="500px" ref={parentRef}>
                 <Table size="sm" variant="striped">
-                  <Tbody>
-                    {visibleLectures.map((lecture, index) => (
-                      <LectureRow
-                        key={`${lecture.id}-${index}`}
-                        lecture={lecture}
-                        addSchedule={addSchedule}
-                      />
-                    ))}
+                  <Tbody
+                    style={{
+                      height: `${rowVirtualizer.getTotalSize()}px`,
+                      width: "100%",
+                      position: "relative",
+                    }}
+                  >
+                    {rowVirtualizer.getVirtualItems().map((virtualRow) => {
+                      const lecture = filteredLectures[virtualRow.index];
+                      return (
+                        <Tr
+                          key={virtualRow.key}
+                          data-index={virtualRow.index}
+                          ref={rowVirtualizer.measureElement}
+                          style={{
+                            position: "absolute",
+                            top: 0,
+                            left: 0,
+                            width: "100%",
+                            transform: `translateY(${virtualRow.start}px)`,
+
+                            // [핵심 1] 높이 통일의 비밀!
+                            display: "flex",
+                            alignItems: "stretch", // 자식들(Td)의 높이를 강제로 늘려서 맞춤
+                            boxSizing: "border-box",
+                          }}
+                        >
+                          {/* [핵심 2] Td 스타일링
+                             - height="auto": 부모(Tr)가 stretch이므로 알아서 꽉 참
+                             - alignItems="center": 텍스트는 수직 중앙 정렬
+                             - borderBottom: 테이블 선이 끊기지 않도록 명시
+                           */}
+
+                          {/* 과목코드: 고정 */}
+                          <Td
+                            width="100px"
+                            display="flex"
+                            alignItems="center"
+                            justifyContent="center"
+                            borderBottom="1px solid inherit"
+                          >
+                            {lecture.id}
+                          </Td>
+
+                          {/* 학년: 고정 */}
+                          <Td
+                            width="50px"
+                            display="flex"
+                            alignItems="center"
+                            justifyContent="center"
+                            borderBottom="1px solid inherit"
+                          >
+                            {lecture.grade}
+                          </Td>
+
+                          {/* 과목명: 가변 */}
+                          <Td
+                            flex={1}
+                            display="flex"
+                            alignItems="center"
+                            borderBottom="1px solid inherit"
+                            overflow="hidden"
+                          >
+                            <Text isTruncated w="full">
+                              {lecture.title}
+                            </Text>
+                          </Td>
+
+                          {/* 학점: 고정 */}
+                          <Td
+                            width="50px"
+                            display="flex"
+                            alignItems="center"
+                            justifyContent="center"
+                            borderBottom="1px solid inherit"
+                          >
+                            {lecture.credits}
+                          </Td>
+
+                          {/* 전공: 가변 (HTML 렌더링) */}
+                          <Td
+                            flex={1}
+                            display="flex"
+                            alignItems="center"
+                            borderBottom="1px solid inherit"
+                            overflow="hidden"
+                          >
+                            <Box
+                              dangerouslySetInnerHTML={{
+                                __html: lecture.major || "",
+                              }}
+                            />
+                          </Td>
+
+                          {/* 시간: 가변 (HTML 렌더링) */}
+                          <Td
+                            flex={1}
+                            display="flex"
+                            alignItems="center"
+                            borderBottom="1px solid inherit"
+                            overflow="hidden"
+                          >
+                            <Box
+                              dangerouslySetInnerHTML={{
+                                __html: lecture.schedule || "",
+                              }}
+                            />
+                          </Td>
+
+                          {/* 추가 버튼: 고정 */}
+                          <Td
+                            width="80px"
+                            display="flex"
+                            alignItems="center"
+                            justifyContent="center"
+                            borderBottom="1px solid inherit"
+                          >
+                            <Button
+                              size="xs"
+                              colorScheme="green"
+                              onClick={() => addSchedule(lecture)}
+                            >
+                              추가
+                            </Button>
+                          </Td>
+                        </Tr>
+                      );
+                    })}
                   </Tbody>
                 </Table>
-                <Box ref={setLoader} h="20px" />
               </Box>
             </Box>
           </VStack>

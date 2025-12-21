@@ -18,6 +18,7 @@
     "@dnd-kit/utilities": "latest",
     "@emotion/react": "latest",
     "@emotion/styled": "latest",
+    "@tanstack/react-virtual": "^3.13.13",
     "axios": "latest",
     "framer-motion": "latest",
     "msw": "latest",
