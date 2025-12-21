@@ -19,6 +19,16 @@ jobs:
   lighthouse-audit:
     name: Lighthouse Performance Audit
     runs-on: ubuntu-latest
+
+    # 👇 [추가 1] 조건부 실행 로직
+    # 수동 실행이거나, 커밋 메시지에 특정 키워드가 포함될 때만 실행
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      contains(github.event.head_commit.message, 'feat') ||
+      contains(github.event.head_commit.message, 'perf') ||
+      contains(github.event.head_commit.message, 'refactor') ||
+      contains(github.event.head_commit.message, '[lhci]')
+
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -49,6 +59,7 @@ jobs:
         run: |
           lhci autorun --collect.staticDistDir=./dist --collect.numberOfRuns=3
 
+      # 기존: 깃헙 이슈에 댓글 달기
       - name: Report Results to GitHub Issue
         if: always()
         uses: actions/github-script@v6
@@ -93,46 +104,27 @@ jobs:
               return `${(val / 1000).toFixed(2)}s`;
             };
 
-            // 학습 중심의 피드백 생성 함수
             const generateFeedback = (webVitals, scores) => {
               let feedback = [];
-              
-              // LCP 분석
               if (webVitals.LCP > THRESHOLDS.LCP.good) {
                 feedback.push(`### ⚠️ **LCP 최적화 필요 (${formatMetricValue(webVitals.LCP, 'LCP')})**`);
-                feedback.push(`- **분석**: 초기 로딩 속도가 기준치보다 느립니다. API 호출이 직렬(Waterfall)로 처리되고 있거나, 리소스 로딩 순서 최적화가 필요합니다.`);
-                feedback.push(`- **학습 포인트**: \`Promise.all\`을 통한 병렬 처리와 네트워크 요청 흐름을 점검해 보세요.`);
+                feedback.push(`- **분석**: 초기 로딩 속도가 느립니다. Waterfall 차트나 리소스 우선순위를 확인하세요.`);
               }
-
-              // INP 분석
               if (webVitals.INP > THRESHOLDS.INP.good || scores.performance < 0.9) {
                  feedback.push(`### ⚠️ **반응성(INP) 개선 필요**`);
-                 feedback.push(`- **분석**: 사용자 입력에 대한 응답 지연이 발생하고 있습니다. 렌더링 과정에서 불필요한 연산이 반복될 가능성이 높습니다.`);
-                 feedback.push(`- **학습 포인트**: 컴포넌트 리렌더링 원리를 이해하고, \`useMemo\`나 \`React.memo\`를 적절히 적용했는지 확인해 보세요.`);
+                 feedback.push(`- **분석**: 입력 지연이 감지되었습니다. 메인 스레드 블로킹 작업을 확인하세요.`);
               }
-
-              // CLS 분석
               if (webVitals.CLS > THRESHOLDS.CLS.good) {
                  feedback.push(`### ⚠️ **레이아웃 안정성(CLS) 확보 필요**`);
-                 feedback.push(`- **분석**: 데이터 로딩 전후로 화면 요소의 위치가 변경되고 있습니다.`);
-                 feedback.push(`- **학습 포인트**: 스켈레톤 UI 적용이나 고정된 높이값(` + '`min-height`' + `) 설정을 통해 시각적 안정성을 높여보세요.`);
               }
-
-              // 최적화 성공 시
               if (feedback.length === 0) {
                 feedback.push(`### ✅ **성능 최적화 목표 달성**`);
-                feedback.push(`모든 핵심 지표(Core Web Vitals)가 안정적입니다. 성능 최적화 기법을 성공적으로 이해하고 적용하였습니다.`);
               }
-
               return feedback.join('\n');
             };
 
             const report = getLatestReport();
-
-            if (!report) {
-              console.log('No Lighthouse report found.');
-              return;
-            }
+            if (!report) return;
 
             const categories = report.categories || {};
             const audits = report.audits || {};
@@ -165,22 +157,13 @@ jobs:
             |:---:|:---:|:---|
             | **Performance** | **${formatScore(scores.performance)}** | ${getStatusIcon(formatScore(scores.performance))} |
             | **Accessibility** | **${formatScore(scores.accessibility)}** | ${getStatusIcon(formatScore(scores.accessibility))} |
-            | **Best Practices** | **${formatScore(scores.bestPractices)}** | ${getStatusIcon(formatScore(scores.bestPractices))} |
 
             ### Core Web Vitals
-            | 지표 | 측정값 | 상태 | 설명 |
-            |:---:|:---:|:---|:---|
-            | **LCP** | ${formatMetricValue(webVitals.LCP, 'LCP')} | ${getStatusIcon(webVitals.LCP, 'LCP')} | 로딩 속도 |
-            | **INP** | ${formatMetricValue(webVitals.INP, 'INP')} | ${getStatusIcon(webVitals.INP, 'INP')} | 반응성 (TBT 포함) |
-            | **CLS** | ${formatMetricValue(webVitals.CLS, 'CLS')} | ${getStatusIcon(webVitals.CLS, 'CLS')} | 시각적 안정성 |
-
-            <details>
-            <summary>참고: 성능 지표 기준</summary>
-
-            - **LCP (Largest Contentful Paint)**: 2.5초 이하 우수
-            - **INP (Interaction to Next Paint)**: 200ms 이하 우수
-            - **CLS (Cumulative Layout Shift)**: 0.1 이하 우수
-            </details>
+            | 지표 | 측정값 | 상태 |
+            |:---:|:---:|:---|
+            | **LCP** | ${formatMetricValue(webVitals.LCP, 'LCP')} | ${getStatusIcon(webVitals.LCP, 'LCP')} |
+            | **INP** | ${formatMetricValue(webVitals.INP, 'INP')} | ${getStatusIcon(webVitals.INP, 'INP')} |
+            | **CLS** | ${formatMetricValue(webVitals.CLS, 'CLS')} | ${getStatusIcon(webVitals.CLS, 'CLS')} |
             `;
 
             await github.rest.issues.create({
@@ -190,3 +173,81 @@ jobs:
               body: body,
               labels: ['lighthouse', 'performance']
             });
+
+      # 👇 [추가 2] DB/API로 결과 전송
+      - name: Send Results to Database
+        if: always() # 이슈 생성 성공 여부와 관계없이 실행
+        uses: actions/github-script@v6
+        env:
+          # GitHub Repository Secrets에 DB_API_URL을 등록해야 합니다!
+          DB_API_URL: ${{ secrets.DB_API_URL }}
+        with:
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+
+            // 1. URL이 설정되지 않았으면 스킵
+            if (!process.env.DB_API_URL) {
+              console.log('⚠️ DB_API_URL secret is not set. Skipping DB upload.');
+              return;
+            }
+
+            const LHCI_DIR = '.lighthouseci';
+
+            // 2. 리포트 읽기
+            let report;
+            try {
+              const jsonReports = fs.readdirSync(LHCI_DIR).filter(f => f.endsWith('.json'));
+              if (!jsonReports.length) return;
+              const latestReport = jsonReports.sort().reverse()[0];
+              report = JSON.parse(fs.readFileSync(path.join(LHCI_DIR, latestReport), 'utf8'));
+            } catch (e) {
+              console.error('Failed to read report for DB:', e);
+              return;
+            }
+
+            const categories = report.categories || {};
+            const audits = report.audits || {};
+
+            // 3. 전송할 데이터 페이로드 구성
+            const payload = {
+              timestamp: new Date().toISOString(),
+              commit: context.sha,
+              branch: context.ref.replace('refs/heads/', ''),
+              scores: {
+                performance: categories.performance?.score * 100,
+                accessibility: categories.accessibility?.score * 100,
+                bestPractices: categories['best-practices']?.score * 100,
+                seo: categories.seo?.score * 100,
+              },
+              metrics: {
+                lcp: audits['largest-contentful-paint']?.numericValue,
+                inp: audits['interactive']?.numericValue,
+                cls: audits['cumulative-layout-shift']?.numericValue,
+                tbt: audits['total-blocking-time']?.numericValue,
+              }
+            };
+
+            console.log('🚀 Sending payload to DB:', JSON.stringify(payload, null, 2));
+
+            // 4. API 호출 (fetch는 Node 18+부터 기본 지원, 여기선 Node 20 사용하므로 OK)
+            try {
+              const response = await fetch(process.env.DB_API_URL, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  // 필요시 인증 헤더 추가: 'Authorization': `Bearer ${process.env.DB_API_TOKEN}`
+                },
+                body: JSON.stringify(payload)
+              });
+
+              if (response.ok) {
+                console.log('✅ Successfully sent results to DB');
+              } else {
+                console.error('❌ Failed to send results:', response.status, response.statusText);
+                const text = await response.text();
+                console.error('Response:', text);
+              }
+            } catch (error) {
+              console.error('❌ Network error sending to DB:', error);
+            }
