@@ -108,7 +108,6 @@ const fetchAllLectures = async () => {
   return results;
 };
 
-// --- 하위 컴포넌트들 ---
 const GradeCheckboxGroup = memo(
   ({
     grades,
@@ -379,6 +378,12 @@ const LectureRow = memo(
 const SearchDialog = ({ searchInfo, onClose }: Props) => {
   const { setSchedulesMap } = useScheduleContext();
 
+  const searchInfoRef = useRef(searchInfo);
+
+  useEffect(() => {
+    searchInfoRef.current = searchInfo;
+  }, [searchInfo]);
+
   const [lectures, setLectures] = useState<LectureWithSchedule[]>([]);
   const [page, setPage] = useState(1);
   const [searchOptions, setSearchOptions] = useState<SearchOption>({
@@ -438,13 +443,15 @@ const SearchDialog = ({ searchInfo, onClose }: Props) => {
     [lectures]
   );
 
-  const visibleLectures = filteredLectures.slice(0, page * PAGE_SIZE);
+ const visibleLectures = useMemo(
+  () => filteredLectures.slice(0, page * PAGE_SIZE),
+  [filteredLectures, page]
+);
 
   const changeSearchOption = useCallback(
     (field: keyof SearchOption, value: SearchOption[typeof field]) => {
       setPage(1);
       setSearchOptions((prev) => ({ ...prev, [field]: value }));
-      // 검색 조건 변경 시 스크롤 맨 위로 (즉시 실행해도 무방)
       if (scrollRef.current) {
         scrollRef.current.scrollTop = 0;
       }
@@ -454,8 +461,8 @@ const SearchDialog = ({ searchInfo, onClose }: Props) => {
 
   const addSchedule = useCallback(
     (lecture: Lecture) => {
-      if (!searchInfo) return;
-      const { tableId } = searchInfo;
+      if (!searchInfoRef.current) return;
+      const { tableId } = searchInfoRef.current;
       const schedules = parseSchedule(lecture.schedule).map((schedule) => ({
         ...schedule,
         lecture,
@@ -466,7 +473,7 @@ const SearchDialog = ({ searchInfo, onClose }: Props) => {
       }));
       onClose();
     },
-    [searchInfo, setSchedulesMap, onClose]
+    [setSchedulesMap, onClose]
   );
 
   useEffect(() => {
@@ -493,8 +500,7 @@ const SearchDialog = ({ searchInfo, onClose }: Props) => {
   }, [searchInfo]);
 
   useEffect(() => {
-    //닫힐때는 렌더링이 불필요 하므로 여기서 멈춰도 됨
-    if (!searchInfo) return
+    if (!searchInfo) return;
     setSearchOptions((prev) => ({
       ...prev,
       days: searchInfo?.day ? [searchInfo.day] : [],
@@ -512,7 +518,6 @@ const SearchDialog = ({ searchInfo, onClose }: Props) => {
       },
       {
         root: scrollRef.current,
-        // 미리 불러오기 (바닥 500px 전)
         rootMargin: "0px 0px 500px 0px",
         threshold: 0,
       }
@@ -523,10 +528,9 @@ const SearchDialog = ({ searchInfo, onClose }: Props) => {
     }
 
     return () => observer.disconnect();
-  }, [visibleLectures.length, filteredLectures.length]); // 의존성 배열 수정: visible 길이가 바뀔 때마다 재측정
+  }, [visibleLectures.length, filteredLectures.length]);
 
   return (
-    // isCentered: 모달을 화면 중앙에 띄움
     <Modal isOpen={Boolean(searchInfo)} onClose={onClose} size="6xl" isCentered>
       <ModalOverlay />
       <ModalContent
@@ -554,7 +558,6 @@ const SearchDialog = ({ searchInfo, onClose }: Props) => {
             <Text align="right">검색결과: {filteredLectures.length}개</Text>
           </VStack>
 
-          {/* 테이블 영역: 남은 높이를 모두 차지 */}
           <Box flex={1} display="flex" flexDirection="column" minH={0} mt={4}>
             <Table>
               <Thead>
@@ -571,7 +574,6 @@ const SearchDialog = ({ searchInfo, onClose }: Props) => {
             </Table>
 
             <Box overflowY="auto" flex={1} ref={scrollRef} position="relative">
-              {/* [추가] 검색 결과가 없을 때 안내 메시지 표시 (높이는 유지된 채로 중앙 정렬) */}
               {filteredLectures.length === 0 ? (
                 <Flex h="100%" align="center" justify="center" color="gray.500">
                   <Text>검색 결과가 없습니다.</Text>
@@ -589,7 +591,6 @@ const SearchDialog = ({ searchInfo, onClose }: Props) => {
                       ))}
                     </Tbody>
                   </Table>
-                  {/* 로더 */}
                   {visibleLectures.length < filteredLectures.length && (
                     <Box ref={loaderRef} h="20px" w="100%" />
                   )}
@@ -603,4 +604,4 @@ const SearchDialog = ({ searchInfo, onClose }: Props) => {
   );
 };
 
-export default SearchDialog;
+export default memo(SearchDialog);
