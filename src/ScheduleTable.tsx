@@ -133,6 +133,7 @@ const GridBackground = memo(
       timeInfo: { day: string; time: number }
     ) => void;
   }) => {
+      console.log(`❌ [GridBackground] 배경 렌더링 (Table: ${tableId}) - 이게 뜨면 안 됨!`);
     return (
       <>
         <GridItem key="교시" borderColor="gray.300" bg="gray.100">
@@ -192,6 +193,7 @@ const GridBackground = memo(
 // '강의 데이터'가 바뀔 때 리렌더링됩니다.
 const ScheduleTableGrid = memo(
   ({ tableId, schedules, onScheduleTimeClick, onDeleteButtonClick }: Props) => {
+      console.log(`[ScheduleTableGrid] 렌더링 확인 (Table: ${tableId})`);
     const getColor = (lectureId: string): string => {
       const lectures = [
         ...new Set(schedules.map(({ lecture }) => lecture?.id)),
