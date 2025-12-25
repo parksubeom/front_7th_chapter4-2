@@ -1,21 +1,34 @@
-import React, { createContext, PropsWithChildren, useContext, useState, useMemo } from "react";
+import React, {
+  createContext,
+  PropsWithChildren,
+  useContext,
+  useState,
+  useMemo,
+  useRef,
+} from "react";
 import { Schedule } from "./types.ts";
 import dummyScheduleMap from "./dummyScheduleMap.ts";
 
 interface ScheduleContextType {
   schedulesMap: Record<string, Schedule[]>;
-  // [추가] 검색 모달 상태도 Context에서 관리
   searchInfo: { tableId: string; day?: string; time?: number } | null;
 }
 
-// [핵심] Dispatch 컨텍스트에 '모든 액션 함수'를 정의합니다.
 interface ScheduleDispatchContextType {
-  setSchedulesMap: React.Dispatch<React.SetStateAction<Record<string, Schedule[]>>>;
+  setSchedulesMap: React.Dispatch<
+    React.SetStateAction<Record<string, Schedule[]>>
+  >;
   onSearch: (tableId: string) => void;
   onDuplicate: (targetId: string) => void;
   onRemove: (targetId: string) => void;
-  onScheduleTimeClick: (tableId: string, timeInfo: { day: string; time: number }) => void;
-  onDeleteButtonClick: (tableId: string, timeInfo: { day: string; time: number }) => void;
+  onScheduleTimeClick: (
+    tableId: string,
+    timeInfo: { day: string; time: number }
+  ) => void;
+  onDeleteButtonClick: (
+    tableId: string,
+    timeInfo: { day: string; time: number }
+  ) => void;
   onCloseSearch: () => void;
 }
 
@@ -23,57 +36,109 @@ interface ScheduleIdsContextType {
   tableIds: string[];
 }
 
-const ScheduleContext = createContext<ScheduleContextType | undefined>(undefined);
-const ScheduleDispatchContext = createContext<ScheduleDispatchContextType | undefined>(undefined);
-const ScheduleIdsContext = createContext<ScheduleIdsContextType | undefined>(undefined);
+const ScheduleContext = createContext<ScheduleContextType | undefined>(
+  undefined
+);
+const ScheduleDispatchContext = createContext<
+  ScheduleDispatchContextType | undefined
+>(undefined);
+const ScheduleIdsContext = createContext<ScheduleIdsContextType | undefined>(
+  undefined
+);
 
 export const useScheduleContext = () => {
   const context = useContext(ScheduleContext);
-  if (context === undefined) throw new Error('useScheduleContext error');
+  if (context === undefined) throw new Error("useScheduleContext error");
   return context;
 };
 
 export const useScheduleDispatch = () => {
   const context = useContext(ScheduleDispatchContext);
-  if (context === undefined) throw new Error('useScheduleDispatch error');
+  if (context === undefined) throw new Error("useScheduleDispatch error");
   return context;
 };
 
 export const useScheduleIds = () => {
   const context = useContext(ScheduleIdsContext);
-  if (context === undefined) throw new Error('useScheduleIds error');
+  if (context === undefined) throw new Error("useScheduleIds error");
   return context;
 };
 
+/**
+ * [최적화] usePreservedTableIds
+ * JSON.stringify(O(N)) 대신 useRef와 얕은 비교를 사용하여
+ * 불필요한 연산과 리렌더링을 방지하는 커스텀 훅입니다.
+ */
+const usePreservedTableIds = (map: Record<string, Schedule[]>) => {
+  const idsRef = useRef<string[]>([]);
+  const currentIds = Object.keys(map);
+
+  // 1. 길이가 다르면 무조건 변경된 것
+  // 2. 길이가 같더라도 내부 요소가 하나라도 다르면 변경된 것
+  const hasChanged =
+    currentIds.length !== idsRef.current.length ||
+    currentIds.some((id, index) => id !== idsRef.current[index]);
+
+  if (hasChanged) {
+    idsRef.current = currentIds;
+  }
+
+  return idsRef.current;
+};
+
 export const ScheduleProvider = ({ children }: PropsWithChildren) => {
-  const [schedulesMap, setSchedulesMap] = useState<Record<string, Schedule[]>>(dummyScheduleMap);
-  const [searchInfo, setSearchInfo] = useState<{ tableId: string; day?: string; time?: number } | null>(null);
+  const [schedulesMap, setSchedulesMap] =
+    useState<Record<string, Schedule[]>>(dummyScheduleMap);
+  const [searchInfo, setSearchInfo] = useState<{
+    tableId: string;
+    day?: string;
+    time?: number;
+  } | null>(null);
 
-  // [유지] ID 목록 참조값 고정 (JSON.stringify)
-  const tableIds = useMemo(() => Object.keys(schedulesMap), [
-    JSON.stringify(Object.keys(schedulesMap))
-  ]);
+  // [수정] JSON.stringify 제거 및 최적화 훅 적용
+  // 이제 schedulesMap이 아무리 커져도, 키의 변경사항 체크는 매우 빠릅니다.
+  const tableIds = usePreservedTableIds(schedulesMap);
 
-  // [핵심] 모든 핸들러를 여기서 정의하고 memo로 '영구 고정'합니다.
-  // 의존성 배열이 [] 이므로, 이 액션 객체와 내부 함수들은 앱 종료 시까지 절대 변하지 않습니다.
-  const actions = useMemo(() => ({
-    setSchedulesMap, // setSchedulesMap은 이미 React에 의해 고정됨
-    onSearch: (tableId: string) => setSearchInfo({ tableId }),
-    onDuplicate: (targetId: string) => 
-      setSchedulesMap(prev => ({ ...prev, [`schedule-${Date.now()}`]: [...prev[targetId]] })),
-    onRemove: (targetId: string) => 
-      setSchedulesMap(prev => { const n = { ...prev }; delete n[targetId]; return n; }),
-    onScheduleTimeClick: (tableId: string, timeInfo: { day: string; time: number }) => 
-      setSearchInfo({ tableId, ...timeInfo }),
-    onDeleteButtonClick: (tableId: string, { day, time }: { day: string; time: number }) => 
-      setSchedulesMap(prev => ({
-        ...prev,
-        [tableId]: prev[tableId].filter(schedule => schedule.day !== day || !schedule.range.includes(time)),
-      })),
-    onCloseSearch: () => setSearchInfo(null),
-  }), []);
+  // [핵심] 액션 핸들러들을 영구 고정 (Context Split 패턴 유지)
+  const actions = useMemo(
+    () => ({
+      setSchedulesMap,
+      onSearch: (tableId: string) => setSearchInfo({ tableId }),
+      onDuplicate: (targetId: string) =>
+        setSchedulesMap((prev) => ({
+          ...prev,
+          [`schedule-${Date.now()}`]: [...prev[targetId]],
+        })),
+      onRemove: (targetId: string) =>
+        setSchedulesMap((prev) => {
+          const n = { ...prev };
+          delete n[targetId];
+          return n;
+        }),
+      onScheduleTimeClick: (
+        tableId: string,
+        timeInfo: { day: string; time: number }
+      ) => setSearchInfo({ tableId, ...timeInfo }),
+      onDeleteButtonClick: (
+        tableId: string,
+        { day, time }: { day: string; time: number }
+      ) =>
+        setSchedulesMap((prev) => ({
+          ...prev,
+          [tableId]: prev[tableId].filter(
+            (schedule) => schedule.day !== day || !schedule.range.includes(time)
+          ),
+        })),
+      onCloseSearch: () => setSearchInfo(null),
+    }),
+    []
+  );
 
-  const scheduleValue = useMemo(() => ({ schedulesMap, searchInfo }), [schedulesMap, searchInfo]);
+  const scheduleValue = useMemo(
+    () => ({ schedulesMap, searchInfo }),
+    [schedulesMap, searchInfo]
+  );
+
   const idsValue = useMemo(() => ({ tableIds }), [tableIds]);
 
   return (
